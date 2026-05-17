@@ -1,0 +1,31 @@
+global:
+  resolve_timeout: 5m
+  slack_api_url: '$SLACK_WEBHOOK_URL'
+
+route:
+  group_by: ['alertname']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 1h
+  receiver: slack-alerts
+
+receivers:
+  - name: slack-alerts
+    slack_configs:
+      - channel: '#allmyworkspace'
+        icon_emoji: ':bell:'
+        title: '{{ .GroupLabels.alertname }}'
+        text: >-
+          {{ range .Alerts }}
+            *Alert:* {{ .Annotations.summary }}
+            *Description:* {{ .Annotations.description }}
+            *Severity:* {{ .Labels.severity }}
+          {{ end }}
+        send_resolved: true
+
+inhibit_rules:
+  - source_match:
+      severity: critical
+    target_match:
+      severity: warning
+    equal: ['alertname', 'instance']

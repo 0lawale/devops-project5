@@ -1,0 +1,78 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    name: Validate Monitoring Stack
+    runs-on: ubuntu-latest
+
+    env:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Docker Compose
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker-compose-plugin
+
+      - name: Validate Prometheus config
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}/prometheus:/etc/prometheus \
+            prom/prometheus:v2.50.0 \
+            --config.file=/etc/prometheus/prometheus.yml \
+            --check-config
+
+      - name: Validate Alertmanager config
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}/alertmanager:/etc/alertmanager \
+            prom/alertmanager:v0.27.0 \
+            --config.file=/etc/alertmanager/alertmanager.yml \
+            check-config
+
+      - name: Start monitoring stack
+        run: docker compose up -d
+
+      - name: Wait for services to be healthy
+        run: sleep 30
+
+      - name: Check Prometheus is up
+        run: |
+          curl --fail http://localhost:9090/-/healthy
+          echo "Prometheus is healthy"
+
+      - name: Check Grafana is up
+        run: |
+          curl --fail http://localhost:3000/api/health
+          echo "Grafana is healthy"
+
+      - name: Check Alertmanager is up
+        run: |
+          curl --fail http://localhost:9093/-/healthy
+          echo "Alertmanager is healthy"
+
+      - name: Check all targets are being scraped
+        run: |
+          curl http://localhost:9090/api/v1/targets | \
+          python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          targets = data['data']['activeTargets']
+          down = [t for t in targets if t['health'] == 'down']
+          if down:
+              print('DOWN targets:', [t['labels']['job'] for t in down])
+              sys.exit(1)
+          print('All', len(targets), 'targets are up')
+          "
+
+      - name: Tear down stack
+        if: always()
+        run: docker compose down
