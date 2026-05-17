@@ -44,7 +44,14 @@ jobs:
             check-config /etc/alertmanager/alertmanager.yml
 
       - name: Start monitoring stack
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: docker compose up -d
+
+      - name: Debug - check running containers
+        run: |
+          docker compose ps
+          docker compose logs alertmanager | tail -20
 
       - name: Wait for services to be healthy
         run: |
