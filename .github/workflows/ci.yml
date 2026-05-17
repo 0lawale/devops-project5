@@ -10,7 +10,6 @@ jobs:
   validate:
     name: Validate Monitoring Stack
     runs-on: ubuntu-latest
-
     env:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
@@ -26,14 +25,6 @@ jobs:
           chmod +x $DOCKER_CONFIG/cli-plugins/docker-compose
           docker compose version
 
-
-    #   - name: Validate Prometheus config
-    #     run: |
-    #       docker run --rm \
-    #         -v ${{ github.workspace }}/prometheus:/etc/prometheus \
-    #         prom/prometheus:v2.50.0 \
-    #         promtool check config /etc/prometheus/prometheus.yml
-
       - name: Validate Prometheus config
         run: |
           docker run --rm \
@@ -42,10 +33,7 @@ jobs:
             prom/prometheus:v2.50.0 \
             check config /etc/prometheus/prometheus.yml
 
-
       - name: Validate Alertmanager config
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
           sudo apt-get install -y gettext-base
           envsubst < alertmanager/alertmanager.yml > /tmp/alertmanager-resolved.yml
@@ -56,27 +44,45 @@ jobs:
             check-config /etc/alertmanager/alertmanager.yml
 
       - name: Start monitoring stack
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: docker compose up -d
 
       - name: Wait for services to be healthy
-        run: sleep 30
+        run: |
+          echo "Waiting for services to start..."
+          sleep 60
 
       - name: Check Prometheus is up
         run: |
-          curl --fail http://localhost:9090/-/healthy
-          echo "Prometheus is healthy"
+          for i in {1..10}; do
+            if curl --fail http://localhost:9090/-/healthy; then
+              echo "Prometheus is healthy"
+              break
+            fi
+            echo "Attempt $i failed, retrying in 5s..."
+            sleep 5
+          done
 
       - name: Check Grafana is up
         run: |
-          curl --fail http://localhost:3000/api/health
-          echo "Grafana is healthy"
+          for i in {1..10}; do
+            if curl --fail http://localhost:3000/api/health; then
+              echo "Grafana is healthy"
+              break
+            fi
+            echo "Attempt $i failed, retrying in 5s..."
+            sleep 5
+          done
 
       - name: Check Alertmanager is up
         run: |
-          curl --fail http://localhost:9093/-/healthy
-          echo "Alertmanager is healthy"
+          for i in {1..10}; do
+            if curl --fail http://localhost:9093/-/healthy; then
+              echo "Alertmanager is healthy"
+              break
+            fi
+            echo "Attempt $i failed, retrying in 5s..."
+            sleep 5
+          done
 
       - name: Check all targets are being scraped
         run: |
